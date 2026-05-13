@@ -1,23 +1,24 @@
 # polymarket-bot
 
-Automated [Polymarket](https://polymarket.com) trading bot with two pluggable strategies:
+Automated [Polymarket](https://polymarket.com) trading bot with a ledger, a backtester, and a small live dashboard.
 
-1. **Copy-trader** - mirrors recent fills from a list of "smart money" wallets (or auto-pulls top wallets from the leaderboard).
-2. **Edge / fair-value** - places passive limit orders when book midpoint diverges from a fair-value model.
+> Personal research / paper-trading tool. Not investment advice. Polymarket is restricted in some jurisdictions including the US - make sure you are permitted to use it.
 
-> This is software for personal research and paper-trading. It is not investment advice. You are responsible for any funds you connect to it. Polymarket is restricted in some jurisdictions (including the US) - make sure you are permitted to use it.
+## What's in here
 
-## Architecture
+- `bot.py` - async run loop with two strategies (copy-trade and edge), risk-managed `Portfolio`, dry-run by default.
+- `ledger.py` - SQLite-backed ledger for every signal and (simulated or real) fill. The single source of truth.
+- `smart_filter.py` - smarter copy-trade filter: ranks wallets by Sharpe-like risk-adjusted return and only fires when **multiple curated wallets agree** on the same trade within a short window.
+- `backtest.py` - replay strategies against historical Polymarket trade data and report PnL, Sharpe, and win rate.
+- `server.py` + `web/` - FastAPI + a tiny static page that shows live positions, recent signals, recent fills, realised P&L and top markets. Refreshes every 5 s.
+- `tests/` - unit tests.
 
-- `bot.py` - single-file entry point with both strategies, a risk-managed `Portfolio`, and an async run-loop.
-- `tests/` - unit tests for risk caps and config defaults.
-- `.env.example` - template for the env vars the bot reads.
+## Safety defaults
 
-Key safety defaults:
-
-- `DRY_RUN=1` by default (logs trades instead of placing them).
-- Per-position cap (`max_position_usd`, default $25) and total exposure cap (`max_total_exposure_usd`, default $200).
-- Stale-signal filter on copied trades (drops fills older than 5 minutes).
+- `DRY_RUN=1` by default. Logs would-be trades but does not place orders.
+- Per-position cap `max_position_usd=$25`, total exposure cap `max_total_exposure_usd=$200`.
+- Copy-trader requires **2 curated wallets to agree** within 10 minutes before mirroring.
+- Stale-signal filter drops fills older than 5 minutes.
 
 ## Setup
 
@@ -27,21 +28,32 @@ cd polymarket-bot
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# edit .env and fill in POLY_PK and POLY_FUNDER
+# edit .env: POLY_PK, POLY_FUNDER
 ```
-
-Get your funder/proxy address and API credentials from Polymarket: Profile -> API. Fund the wallet with USDC on Polygon.
 
 ## Run
 
-Paper trade (recommended first):
+**Paper trade** (recommended - days, not hours):
 
 ```bash
 set -a; source .env; set +a
 python bot.py
 ```
 
-Go live (only after watching dry-run logs and trusting the behaviour):
+**Dashboard** (in a second terminal):
+
+```bash
+uvicorn server:app --reload --port 8000
+# open http://localhost:8000
+```
+
+**Backtest** a single market:
+
+```bash
+python backtest.py --token-id 0xYOUR_TOKEN_ID --strategy edge --min-edge 0.04
+```
+
+**Go live** - only after you have watched several days of dry-run logs *and* backtested the strategy on multiple markets:
 
 ```bash
 DRY_RUN=0 python bot.py
@@ -49,25 +61,32 @@ DRY_RUN=0 python bot.py
 
 ## Configuration
 
-All knobs live on the `Config` dataclass at the top of `bot.py`:
+| Env var | Default | Notes |
+|---|---|---|
+| `POLY_PK` | (required) | Polygon private key holding USDC |
+| `POLY_FUNDER` | (required) | Your Polymarket proxy/funder address |
+| `DRY_RUN` | 1 | Set to 0 for live trading |
+| `WATCH` | (empty) | Comma-separated wallets to copy. Empty = auto-curate from leaderboard |
+| `SMART_FILTER` | 1 | Require multi-wallet agreement before copying |
+| `LEDGER_PATH` | `state/ledger.db` | SQLite file |
 
-| Field | Default | Notes |
-|-------|---------|-------|
-| `max_position_usd` | 25 | Max USD per single order |
-| `max_total_exposure_usd` | 200 | Hard cap across all open positions |
-| `min_edge` | 0.03 | Required EV in cents before edge strategy fires |
-| `poll_seconds` | 20 | How often each strategy runs |
-| `watch_addresses` | env `WATCH` | Comma-separated wallets to copy. Empty = auto top traders |
+In-code knobs on `Config` (top of `bot.py`): `max_position_usd`, `max_total_exposure_usd`, `min_edge`, `poll_seconds`, `min_agree_wallets`.
 
-## Strategies
+## How the strategies work
 
-### Copy-trader
+**Copy-trader.** Polls `data-api.polymarket.com` for recent fills from each wallet in a curated set. The curated set is rebuilt hourly: candidates come from the leaderboard, but only wallets that pass thresholds on Sharpe, win-rate, and sample size make it in. A signal is only emitted when `min_agree_wallets` of them take the same side on the same token within `agree_window_seconds`. Then the bot posts a limit order one tick worse than top of book.
 
-Polls Polymarket data API for recent TRADE activity from each watched wallet, dedupes by transaction hash, and posts a same-side limit order one tick worse than top of book. Order size is scaled down vs. the source trade.
+**Edge strategy.** For each active market, computes `edge = fair_value - mid`. The default `fair_value` is just last-trade price - **this is a placeholder, not a real model**. Replace it with a model that has actual predictive power (sports model, news classifier, cross-market arb, your own research) before going live.
 
-### Edge
+## Why this is structured for measurement, not just trading
 
-Iterates active markets, computes `edge = fair_value - mid`, and posts a passive order on the favourable side when `abs(edge) >= min_edge`. The default `fair_value` is just the last trade price - **replace it with a real model** (sports prediction, news classifier, cross-market arb, etc.) before going live.
+Every signal and fill gets logged. The dashboard lets you watch the bot in real time and the backtester lets you replay a strategy variant on historical trades. So before you flip `DRY_RUN=0`, you can answer:
+
+- Does this strategy actually have positive expected value on the markets I care about?
+- How often does it trade?
+- What is the realised win rate and per-trade return?
+
+If the answer to the first question is "no" or "I don't know", do **not** trade live.
 
 ## Tests
 
@@ -78,11 +97,10 @@ pytest -q
 
 ## Roadmap
 
-- Websocket streaming instead of polling.
-- Sharpe-weighted leaderboard filter for copy-trader.
-- Plug-in fair-value modules (sports, crypto, politics).
-- SQLite-backed position/trade ledger.
-- Telegram/Discord alerts.
+- Websocket order-book feed instead of polling.
+- Domain-specific fair-value plug-ins (sports, crypto, politics).
+- Auto-flatten / kill-switch on max drawdown.
+- Telegram or Discord alerts on fills.
 
 ## License
 
