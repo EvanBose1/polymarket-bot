@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>polymarket-bot dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root { color-scheme: dark; --bg:#0c0d10; --card:#16181d; --b:#22252c; --t:#e8e8ea; --m:#8b8f99; --g:#3ddc97; --r:#ff5d5d; }
+  body { background:var(--bg); color:var(--t); font:14px/1.45 system-ui,sans-serif; margin:0; padding:24px; }
+  h1 { margin:0 0 4px; font-size:20px; }
+  .sub { color:var(--m); margin-bottom:24px; }
+  .grid { display:grid; gap:16px; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); }
+  .card { background:var(--card); border:1px solid var(--b); border-radius:10px; padding:14px 16px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:var(--m); margin:0 0 10px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--b); }
+  th { color:var(--m); font-weight:500; font-size:11px; text-transform:uppercase; }
+  .num { text-align:right; font-variant-numeric: tabular-nums; }
+  .pos { color:var(--g); }
+  .neg { color:var(--r); }
+  .pill { display:inline-block; padding:2px 6px; border-radius:4px; background:#252830; color:var(--m); font-size:11px; }
+  .pill.buy { background:#13351f; color:var(--g); }
+  .pill.sell { background:#3a1a1a; color:var(--r); }
+  .pill.dry { background:#1b2030; color:#7aa2ff; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; color:var(--m); }
+  .bigpnl { font-size:28px; font-variant-numeric: tabular-nums; }
+  a { color:#7aa2ff; text-decoration:none; }
+</style>
+</head>
+<body>
+  <h1>polymarket-bot</h1>
+  <div class="sub">Live ledger view. Auto-refresh every 5 s.</div>
+  <div class="grid">
+    <div class="card">
+      <h2>Realised P&amp;L</h2>
+      <div id="pnl" class="bigpnl">--</div>
+      <table id="pnl-bs"></table>
+    </div>
+    <div class="card">
+      <h2>Open positions</h2>
+      <table id="pos"><thead><tr><th>Token</th><th>Strat</th><th class="num">Net shares</th><th class="num">Net USD</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="card">
+      <h2>Recent fills</h2>
+      <table id="fills"><thead><tr><th>When</th><th>Side</th><th>Strat</th><th class="num">Price</th><th class="num">Shares</th><th></th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="card">
+      <h2>Recent signals</h2>
+      <table id="sigs"><thead><tr><th>When</th><th>Strat</th><th>Side</th><th class="num">@</th><th class="num">Edge</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="card" style="grid-column:1/-1">
+      <h2>Top markets by 24h volume</h2>
+      <table id="mkts"><thead><tr><th>Market</th><th class="num">Last</th><th class="num">Vol 24h</th><th class="num">Liquidity</th></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+<script src="/static/app.js"></script>
+</body>
+</html>
